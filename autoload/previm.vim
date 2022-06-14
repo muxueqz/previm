@@ -10,6 +10,7 @@ let s:File = vital#previm#import('System.File')
 let s:newline_character = "\n"
 
 function! previm#open(preview_html_file) abort
+  let b:previm_opened = 1
   call previm#refresh()
   if exists('g:previm_open_cmd') && !empty(g:previm_open_cmd)
     if has('win32') && g:previm_open_cmd =~? 'firefox'
@@ -58,8 +59,11 @@ function! s:apply_openbrowser(path) abort
 endfunction
 
 function! previm#refresh() abort
-  call previm#refresh_css()
-  call previm#refresh_js()
+  if exists('b:previm_opened')
+    call s:fix_preview_base_dir()
+    call previm#refresh_css()
+    call previm#refresh_js()
+  endif
 endfunction
 
 let s:default_origin_css_path = "@import url('../../_/css/origin.css');"
@@ -92,9 +96,20 @@ function! previm#refresh_js() abort
 endfunction
 
 let s:base_dir = fnamemodify(expand('<sfile>:p:h') . '/../preview', ':p')
+
+function! s:fix_preview_base_dir() abort
+  if exists('g:previm_custom_preview_base_dir')
+    let s:preview_base_dir = expand(g:previm_custom_preview_base_dir)
+    if !filereadable(s:preview_base_dir . '_/js/previm.js')
+      call s:File.copy_dir(s:base_dir . '_', s:preview_base_dir)
+    endif
+  else
+    let s:preview_base_dir = s:base_dir
+  endif
+endfunction
+
 if exists('g:previm_custom_preview_base_dir')
   let s:preview_base_dir = expand(g:previm_custom_preview_base_dir)
-  call s:File.copy_dir(s:base_dir . '_', s:preview_base_dir)
 else
   let s:preview_base_dir = s:base_dir
 endif
@@ -223,6 +238,9 @@ function! previm#convert_to_content(lines) abort
     " convert cygwin path to windows path
     let mkd_dir = substitute(system('cygpath -wa ' . mkd_dir), "\n$", '', '')
     let mkd_dir = substitute(mkd_dir, '\', '/', 'g')
+  elseif get(g:, 'previm_wsl_mode', 0) ==# 1
+    let mkd_dir = trim(system('wslpath -w ' . mkd_dir))
+    let mkd_dir = substitute(mkd_dir, '\', '/', 'g')
   elseif has('win32')
     let mkd_dir = substitute(mkd_dir, '\', '/', 'g')
   endif
@@ -277,6 +295,9 @@ function! previm#relative_to_absolute_imgpath(text, mkd_dir) abort
   let prev_imgpath = ''
   let new_imgpath = ''
   let path_prefix = '//localhost'
+  if get(g:, 'previm_wsl_mode', 0) ==# 1
+    let path_prefix = ''
+  endif
   if s:start_with(local_path, 'file://')
     let path_prefix = ''
     let local_path = local_path[7:]
